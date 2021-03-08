@@ -9,31 +9,41 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.rabbitmq.*;
 
-import java.time.Duration;
-import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 
 @Service
 public class RabbitService {
 
-
-    public Disposable consume(CountDownLatch latch){
+    Disposable consume(CountDownLatch latch, StringBuilder abc){
         ConnectionFactory connectionFactory = new ConnectionFactory();
         connectionFactory.useNio();
-        connectionFactory.setUsername("mcp");
-        connectionFactory.setPassword("mcp");
 
         ReceiverOptions receiverOptions = new ReceiverOptions()
                 .connectionFactory(connectionFactory)
                 .connectionSubscriptionScheduler(Schedulers.boundedElastic());
 
-       Receiver receiver = RabbitFlux.createReceiver(receiverOptions);
+        Receiver receiver = RabbitFlux.createReceiver(receiverOptions);
 
-      return receiver.consumeAutoAck("MCPTOSV00").log()
-                                .subscribe(m->{
-                                    System.out.println(new String(m.getBody()));
-                                    latch.countDown();
-                                });
+       return receiver.consumeAutoAck("MCPTOSV00").log()
+               .flatMap(m-> Mono.just(new String(m.getBody())))
+               .subscribe(msg->{
+                   abc.append(msg+",");
+                   latch.countDown();
+               });
+    }
+
+    Flux<String> longConsume( StringBuilder abc){
+        ConnectionFactory connectionFactory = new ConnectionFactory();
+        connectionFactory.useNio();
+
+        ReceiverOptions receiverOptions = new ReceiverOptions()
+                .connectionFactory(connectionFactory)
+                .connectionSubscriptionScheduler(Schedulers.boundedElastic());
+
+        Receiver receiver = RabbitFlux.createReceiver(receiverOptions);
+
+        return receiver.consumeAutoAck("MCPTOSV00").log()
+                .flatMap(m-> Mono.just(new String(m.getBody())+","));
 
     }
 
