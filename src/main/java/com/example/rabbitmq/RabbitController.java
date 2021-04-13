@@ -1,6 +1,5 @@
 package com.example.rabbitmq;
 
-import com.rabbitmq.client.Delivery;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,9 +28,6 @@ public class RabbitController {
 
     @GetMapping("/consume")
     public Flux<String> consume() throws InterruptedException, IOException, TimeoutException {
-        CountDownLatch latch = new CountDownLatch(10);
-        rabbitService.consume(latch);
-
         return Flux.just("test");
     }
 }
