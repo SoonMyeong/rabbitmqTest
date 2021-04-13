@@ -43,8 +43,8 @@ public class RabbitConfig {
         connectionFactory.useNio();
         connectionFactory.setHost("localhost");
         connectionFactory.setPort(5672);
-        connectionFactory.setUsername("mcp");
-        connectionFactory.setPassword("mcp");
+        connectionFactory.setUsername("");
+        connectionFactory.setPassword("");
 
         this.connectionMono
                 = Utils.singleConnectionMono(connectionFactory, cf->cf.newConnection("enqueue"));
