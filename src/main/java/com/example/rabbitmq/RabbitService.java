@@ -1,6 +1,7 @@
 package com.example.rabbitmq;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.server.ServerRequest;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.*;
@@ -19,9 +20,9 @@ public class RabbitService {
         this.rabbitConfig = rabbitConfig;
     }
 
-    public Mono<String> enqueue(){
-        String srcMRN = "urn:mrn:neonex:srcMRN";
-        String queue = "urn:mrn:neonex:dstMRN"+"::"+srcMRN;
+    public Mono<String> enqueue(ServerRequest request){
+        String srcMRN = request.headers().firstHeader("srcMRN");
+        String queue = request.headers().firstHeader("dstMRN")+"::"+srcMRN;
 
         Flux<OutboundMessage> msg =
                 Flux.just(new OutboundMessage("",queue,"TEST".getBytes()));
@@ -32,51 +33,14 @@ public class RabbitService {
         return Mono.just("OK");
     }
 
-    public void consume(CountDownLatch latch) throws InterruptedException, IOException, TimeoutException {
-//        ConnectionFactory connectionFactory = new ConnectionFactory();
-//        connectionFactory.useNio();
-//        connectionFactory.setHost("127.0.0.1");
-//        connectionFactory.setPort(5672);
-//        connectionFactory.setUsername("mcp");
-//        connectionFactory.setPassword("mcp");
-//
-//        Connection connection = null;
-//        connection = connectionFactory.newConnection();
-//        Channel channel = connection.createChannel();
-//
-//        Mono<Connection> connectionMono = Mono.just(connection);
-//        Mono<Channel> channelMono = Mono.just(channel);
+    public Flux<String> consume(ServerRequest request) {
+        String srcMRN = request.headers().firstHeader("srcMRN");
+        String queue = request.headers().firstHeader("dstMRN")+"::"+srcMRN;
 
-//        ReceiverOptions receiverOptions = new ReceiverOptions()
-//                .connectionMono(connectionMono);
-//        SenderOptions senderOptions = new SenderOptions()
-//                .connectionMono(connectionMono)
-//                .channelMono(channelMono);
-//
-//
-//        Receiver receiver = RabbitFlux.createReceiver(receiverOptions);
-//        Sender sender = RabbitFlux.createSender(senderOptions);
-//
-//        Flux<OutboundMessage> msg =
-//                Flux.just(new OutboundMessage("amq.direct","test","Test".getBytes()));
-//
-//        sender.declare(QueueSpecification.queue("Test")).log("DECLARE")
-//                .then(sender.bind(binding("amq.direct","test","Test")))
-//                .subscribe(System.out::println);
+        rabbitConfig.declare(queue);
 
-//        sender.declareQueue(QueueSpecification.queue("Test").name("Test").durable(true)).log("declare");
-//        sender.send(msg).log("Send").subscribe();
-//        sender.close();
-        //connectionMono.block().close();
-
-//        receiver.consumeAutoAck("Test").log("CONSUME")
-//                                .subscribe(m->{
-//                                    System.out.println(new String(m.getBody()));
-//                                    latch.countDown();
-//                                });
-//        latch.await(1, TimeUnit.SECONDS);
-
-//        channelMono.block().close();
+        return rabbitConfig.receiver().consumeAutoAck(queue).log("long-polling")
+                .flatMap(m->Mono.just(new String(m.getBody())));
     }
 
 }

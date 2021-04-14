@@ -76,32 +76,15 @@ public class RabbitConfig {
                 new ChannelPoolOptions().maxCacheSize(100)
         );
 
-//        Mono<Channel> channelMono = this.declareMono.map(c -> {
-//            try {
-//                return c.createChannel();
-//            } catch (Exception e) {
-//                throw new RabbitFluxException(e);
-//            }
-//        }).cache();
-//
-//        this.resourceManagementOptions
-//                = new ResourceManagementOptions().channelMono(channelMono);
-
         QueueSpecification queueSpecification = new QueueSpecification();
         queueSpecification.durable(true);
 
     }
 
-    public ChannelPool getChannelPool(){
-        return this.channelPool;
-    }
+    public Receiver receiver(){ return RabbitFlux.createReceiver(new ReceiverOptions().connectionMono(getConnectionMono()));}
 
     private Mono<? extends Connection> getConnectionMono(){
         return this.connectionMono;
-    }
-    @PostConstruct
-    public Sender sender(){
-        return RabbitFlux.createSender(new SenderOptions().connectionMono(getConnectionMono()));
     }
 
     public ResourceManagementOptions getResourceManagementOptions() {return this.resourceManagementOptions; }
@@ -139,21 +122,25 @@ public class RabbitConfig {
     public void sendMessage(Flux<OutboundMessage> msg){
         Sender sender = RabbitFlux.createSender(new SenderOptions().connectionMono(getConnectionMono()));
         Mono<? extends Channel> channelMono = this.channelPool.getChannelMono();
-        sender.send(msg,new SendOptions().channelMono(channelMono)).log("send")
+        sender.send(msg,new SendOptions().channelPool(this.channelPool)).log("send")
                 .subscribe(unused -> {
                     System.out.println("[send] send..");
                 });
-        channelMono.subscribe(channel -> {
-            try {
-                System.out.println("[send] channel..");
-                channel.close();
-                sender.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (TimeoutException e) {
-                e.printStackTrace();
-            }
-        });
+//        sender.send(msg,new SendOptions().channelMono(channelMono)).log("send")
+//                .subscribe(unused -> {
+//                    System.out.println("[send] send..");
+//                });
+//        channelMono.subscribe(channel -> {
+//            try {
+//                System.out.println("[send] channel..");
+//                channel.close();
+//                sender.close();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            } catch (TimeoutException e) {
+//                e.printStackTrace();
+//            }
+//        });
         sender.close();
     }
 }
