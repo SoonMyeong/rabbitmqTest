@@ -18,6 +18,7 @@ public class RabbitConfig {
     private Mono<? extends Connection> connectionMono;
     private Mono<com.rabbitmq.client.Connection> declareMono;
     private ChannelPool channelPool;
+    private ChannelPool declarePool;
     private ResourceManagementOptions resourceManagementOptions;
 
     /**
@@ -41,38 +42,50 @@ public class RabbitConfig {
     void init() {
         ConnectionFactory connectionFactory = new ConnectionFactory();
         connectionFactory.useNio();
-        connectionFactory.setHost("localhost");
+        connectionFactory.setHost("192.168.11.161");
         connectionFactory.setPort(5672);
-        connectionFactory.setUsername("");
-        connectionFactory.setPassword("");
+        connectionFactory.setUsername("mcp");
+        connectionFactory.setPassword("mcp");
 
-        this.connectionMono
-                = Utils.singleConnectionMono(connectionFactory, cf->cf.newConnection("enqueue"));
+//        this.connectionMono
+//                = Utils.singleConnectionMono(connectionFactory, cf->cf.newConnection("enqueue"));
 
-        this.channelPool = ChannelPoolFactory.createChannelPool(
-                this.connectionMono,
-                new ChannelPoolOptions().maxCacheSize(10)
-        );
+
+//        this.channelPool = ChannelPoolFactory.createChannelPool(
+//                this.connectionMono,
+//                new ChannelPoolOptions().maxCacheSize(10)
+//        );
 
 
         try {
-            declareMono = Mono.just(connectionFactory.newConnection("relaying-declare"));
+            this.connectionMono = Mono.just(connectionFactory.newConnection("enqueue"));
+            this.declareMono = Mono.just(connectionFactory.newConnection("relaying-declare"));
         } catch (IOException e) {
             e.printStackTrace();
         } catch (TimeoutException e) {
             e.printStackTrace();
         }
 
-        Mono<Channel> channelMono = declareMono.map(c -> {
-            try {
-                return c.createChannel();
-            } catch (Exception e) {
-                throw new RabbitFluxException(e);
-            }
-        }).cache();
+        this.channelPool = ChannelPoolFactory.createChannelPool(
+                this.connectionMono,
+                new ChannelPoolOptions().maxCacheSize(10)
+        );
 
-        this.resourceManagementOptions
-                = new ResourceManagementOptions().channelMono(channelMono);
+        this.declarePool = ChannelPoolFactory.createChannelPool(
+                this.declareMono,
+                new ChannelPoolOptions().maxCacheSize(100)
+        );
+
+//        Mono<Channel> channelMono = this.declareMono.map(c -> {
+//            try {
+//                return c.createChannel();
+//            } catch (Exception e) {
+//                throw new RabbitFluxException(e);
+//            }
+//        }).cache();
+//
+//        this.resourceManagementOptions
+//                = new ResourceManagementOptions().channelMono(channelMono);
 
         QueueSpecification queueSpecification = new QueueSpecification();
         queueSpecification.durable(true);
@@ -101,31 +114,25 @@ public class RabbitConfig {
      */
     public void declare(String queue) {
         Sender sender = RabbitFlux.createSender(new SenderOptions().connectionMono(declareMono));
-        Mono<Channel> channelMono = this.declareMono.map(c -> {
-            try {
-                return c.createChannel();
-            } catch (Exception e) {
-                throw new RabbitFluxException(e);
-            }
-        }).cache();
+        Mono<? extends Channel> channelMono = this.declarePool.getChannelMono().cache();
 
         this.resourceManagementOptions
-                = new ResourceManagementOptions().channelMono(channelMono);
+                = new ResourceManagementOptions().channelMono((Mono<Channel>) channelMono);
 
-        sender.declareQueue(QueueSpecification.queue(queue),getResourceManagementOptions()).log("declare")
+        sender.declare(QueueSpecification.queue(queue),getResourceManagementOptions()).log("declare")
                 .subscribe(declareOk -> {
                     channelMono.subscribe(channel -> {
                         try {
+                            System.out.println("[declare] close");
                             channel.close();
+                            sender.close();
                         } catch (IOException e) {
                             e.printStackTrace();
                         } catch (TimeoutException e) {
                             e.printStackTrace();
                         }
                     });
-                    sender.close();
                 });
-
     }
 
 
@@ -134,17 +141,19 @@ public class RabbitConfig {
         Mono<? extends Channel> channelMono = this.channelPool.getChannelMono();
         sender.send(msg,new SendOptions().channelMono(channelMono)).log("send")
                 .subscribe(unused -> {
-                    channelMono.subscribe(channel -> {
-                        try {
-                            channel.close();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        } catch (TimeoutException e) {
-                            e.printStackTrace();
-                        }
-                    });
-                    sender.close();
+                    System.out.println("[send] send..");
                 });
-
+        channelMono.subscribe(channel -> {
+            try {
+                System.out.println("[send] channel..");
+                channel.close();
+                sender.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (TimeoutException e) {
+                e.printStackTrace();
+            }
+        });
+        sender.close();
     }
 }

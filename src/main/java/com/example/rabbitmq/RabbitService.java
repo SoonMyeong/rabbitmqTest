@@ -26,7 +26,7 @@ public class RabbitService {
         Flux<OutboundMessage> msg =
                 Flux.just(new OutboundMessage("",queue,"TEST".getBytes()));
 
-        //rabbitConfig.declare(queue);
+        rabbitConfig.declare(queue);
         rabbitConfig.sendMessage(msg);
 
         return Mono.just("OK");
